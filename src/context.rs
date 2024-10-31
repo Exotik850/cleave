@@ -1,10 +1,11 @@
 use anyhow::Context;
 use arboard::ImageData;
 use glam::Vec2;
-use image::{GenericImageView, ImageBuffer, Rgba};
+use image::{DynamicImage, GenericImageView, ImageBuffer, Rgb};
 // use pixels::{Pixels, SurfaceTexture};
 use winit::{
-    dpi::PhysicalSize, platform::windows::IconExtWindows, window::{Icon, Window, WindowAttributes}
+    dpi::PhysicalSize,
+    window::{Icon, Window, WindowAttributes},
 };
 
 use crate::{graphics_bundle::GraphicsBundle, graphics_impl::Graphics, Drag, Selection};
@@ -26,7 +27,7 @@ pub struct AppContext {
     size: PhysicalSize<u32>,
     mouse_position: (f64, f64),
     current_drag: Option<Drag>,
-    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    img: ImageBuffer<Rgb<u8>, Vec<u8>>,
     // pixels: Pixels<'static>,
     total_time: f32,
     last_frame: std::time::Instant,
@@ -83,7 +84,7 @@ impl AppContext {
         for y in min_y..max_y {
             let row_start = (y * self.size.width + min_x) as usize * 4;
             let row_end = (y * self.size.width + max_x) as usize * 4;
-            let row = &self.image.as_raw()[row_start..row_end];
+            let row = &self.img.as_raw()[row_start..row_end];
             image_data.extend_from_slice(row);
         }
 
@@ -108,9 +109,9 @@ impl AppContext {
             .into_iter()
             .find(|m| m.is_primary())
             .with_context(|| "Could not get primary monitor")?;
-        let img = monitor.capture_image()?;
+        let img = DynamicImage::ImageRgba8(monitor.capture_image()?).to_rgb8();
         let size = PhysicalSize::new(monitor.width(), monitor.height());
-        
+
         let icon_bytes = include_bytes!("../icon.png");
         let rgba = image::load_from_memory(icon_bytes)?.to_rgba8();
         let (width, height) = rgba.dimensions();
@@ -139,14 +140,16 @@ impl AppContext {
         );
 
         graphics.window.set_visible(true);
-        let _ = graphics.window.set_cursor_grab(winit::window::CursorGrabMode::Confined);
+        let _ = graphics
+            .window
+            .set_cursor_grab(winit::window::CursorGrabMode::Confined);
 
         // let surface_texture = SurfaceTexture::new(size.width, size.height, window.clone());
         // let pixels = Pixels::new(size.width, size.height, surface_texture)?;
 
         Ok(Self {
             size,
-            image: img,
+            img,
             bundle,
             total_time: 0.0,
             last_frame: std::time::Instant::now(),

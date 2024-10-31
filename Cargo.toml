@@ -9,16 +9,19 @@ arboard = "3.4.1"
 bytemuck = { version = "1.19.0", features = ["derive"] }
 glam = { version = "0.29.1", features = ["bytemuck"] }
 image = "0.25.4"
+memory-stats = "1.2.0"
 pollster = "0.4.0"
 # pixels = { git = "https://github.com/parasyte/pixels.git" }
-thiserror = "1.0.65"
+# thiserror = "1.0.65"
 wgpu = "23.0.0"
 winit = { version = "0.30.5", features = ["rwh_06"] }
 xcap = "0.0.14"
 
 [profile.release]
 codegen-units = 1
-lto = "thin"
+lto = "fat"
+strip = true  # Remove debug symbols
+panic = "abort" 
 
 [build]
 rustflags = ["-C", "target-cpu=native"]

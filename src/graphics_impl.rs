@@ -227,7 +227,7 @@ fn find_config(
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::Immediate,
-        desired_maximum_frame_latency: 2,
+        desired_maximum_frame_latency: 1,
         alpha_mode: surface_config.alpha_modes[0],
         view_formats: vec![],
     }

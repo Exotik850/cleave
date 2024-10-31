@@ -1,5 +1,6 @@
-#![windows_subsystem = "windows"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use memory_stats::memory_stats;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, MouseButton, WindowEvent},
@@ -111,6 +112,18 @@ impl ApplicationHandler for App {
                 (ElementState::Pressed, Key::Named(NamedKey::Escape)) => {
                     event_loop.exit();
                     context.destroy();
+                }
+                (ElementState::Pressed, Key::Character(ch)) => {
+                    if ch == "m" || ch == "M" {
+                        if let Some(usage) = memory_stats() {
+                            println!("Current physical memory usage: {}", usage.physical_mem);
+                            println!("Current virtual memory usage: {}", usage.virtual_mem);
+                        } else {
+                            println!("Could not get memory usage");
+                        }
+                    } else {
+                        println!("Unknown key: {:?}", ch);
+                    }
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::Space)) => {
                     context.hide_window();
