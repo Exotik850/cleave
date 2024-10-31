@@ -3,8 +3,10 @@ use arboard::ImageData;
 use glam::Vec2;
 use image::{GenericImageView, ImageBuffer, Rgba};
 // use pixels::{Pixels, SurfaceTexture};
+#[cfg(target_os = "windows")]
+use platform::windows::IconExtWindows;
 use winit::{
-    dpi::PhysicalSize, platform::windows::IconExtWindows, window::{Icon, Window, WindowAttributes}
+    dpi::PhysicalSize, window::{Icon, Window, WindowAttributes}
 };
 
 use crate::{graphics_bundle::GraphicsBundle, graphics_impl::Graphics, Drag, Selection};
