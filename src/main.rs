@@ -7,7 +7,8 @@ use winit::{
 };
 
 mod context;
-use context::{AppContext, Direction, MoveMode};
+mod args;
+use context::{AppContext, Direction, SelectionMode};
 
 pub struct Drag {
     start: (f64, f64),
@@ -125,16 +126,16 @@ impl ApplicationHandler for App {
                     context.handle_move(Direction::Right);
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::Shift)) => {
-                    context.set_mode(MoveMode::InverseResize);
+                    context.set_mode(SelectionMode::InverseResize);
                 }
                 (ElementState::Released, Key::Named(NamedKey::Shift)) => {
-                    context.set_mode(MoveMode::Resize);
+                    context.set_mode(SelectionMode::Resize);
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::Control)) => {
-                    context.set_mode(MoveMode::Move);
+                    context.set_mode(SelectionMode::Move);
                 }
                 (ElementState::Released, Key::Named(NamedKey::Control)) => {
-                    context.set_mode(MoveMode::Resize);
+                    context.set_mode(SelectionMode::Resize);
                 }
                 _ => {}
             },

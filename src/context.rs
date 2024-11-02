@@ -11,7 +11,7 @@ use winit::{
 // use crate::{graphics_bundle::GraphicsBundle, graphics_impl::Graphics};
 use cleave_graphics::prelude::*;
 
-pub enum MoveMode {
+pub enum SelectionMode {
     Move,          // Move the selection
     InverseResize, // Make the selection smaller
     Resize,        // Make the selection larger
@@ -100,7 +100,7 @@ pub struct AppContext {
     last_frame: std::time::Instant,
     graphics: Graphics<Window>,
     bundle: GraphicsBundle<SelectionUniforms>,
-    mode: MoveMode,
+    mode: SelectionMode,
 }
 
 impl AppContext {
@@ -218,7 +218,7 @@ impl AppContext {
             // window,
             graphics,
             mouse_position: DVec2::new(0.0, 0.0),
-            mode: MoveMode::Resize,
+            mode: SelectionMode::Resize,
         })
     }
 
@@ -233,17 +233,17 @@ impl AppContext {
         let selection = self.selection.selection.as_mut()?;
 
         match self.mode {
-            MoveMode::Move => {
+            SelectionMode::Move => {
                 selection.start.x = (selection.start.x + dx).clamp(0.0, self.size.width as f32);
                 selection.start.y = (selection.start.y + dy).clamp(0.0, self.size.height as f32);
                 selection.end.x = (selection.end.x + dx).clamp(0.0, self.size.width as f32);
                 selection.end.y = (selection.end.y + dy).clamp(0.0, self.size.height as f32);
             }
-            MoveMode::Resize => {
+            SelectionMode::Resize => {
                 selection.end.x = (selection.end.x + dx).clamp(0.0, self.size.width as f32);
                 selection.end.y = (selection.end.y + dy).clamp(0.0, self.size.height as f32);
             }
-            MoveMode::InverseResize => {
+            SelectionMode::InverseResize => {
                 selection.start.x = (selection.start.x + dx).clamp(0.0, self.size.width as f32);
                 selection.start.y = (selection.start.y + dy).clamp(0.0, self.size.height as f32);
             }
@@ -315,7 +315,7 @@ impl AppContext {
         self.graphics.set_visible(false);
     }
 
-    pub fn set_mode(&mut self, mode: MoveMode) {
+    pub fn set_mode(&mut self, mode: SelectionMode) {
         self.mode = mode
     }
 
