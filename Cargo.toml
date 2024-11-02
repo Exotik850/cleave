@@ -20,6 +20,7 @@ wgpu = { workspace = true }
 xcap = { workspace = true }
 cleave-graphics = { path = "cleave-graphics" }
 clap = { version = "4.5.20", features = ["derive"] }
+chrono = "0.4.38"
 
 
 [workspace.dependencies]
@@ -39,3 +40,5 @@ lto = "thin"
 
 [build]
 rustflags = ["-C", "target-cpu=native"]
+
+[features]

@@ -1,7 +1,11 @@
+use std::path::{Path, PathBuf};
+
 use anyhow::Context;
 use arboard::ImageData;
 use glam::{DVec2, Vec2};
-use image::{GenericImageView, ImageBuffer, Rgba};
+use image::{
+    imageops::FilterType, GenericImageView, ImageBuffer, ImageError, ImageFormat, Rgba, RgbaImage,
+};
 // use pixels::{Pixels, SurfaceTexture};
 use winit::{
     dpi::PhysicalSize,
@@ -10,6 +14,8 @@ use winit::{
 
 // use crate::{graphics_bundle::GraphicsBundle, graphics_impl::Graphics};
 use cleave_graphics::prelude::*;
+
+use crate::args::Args;
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum SelectionMode {
@@ -79,24 +85,41 @@ impl UserSelection {
         Some(((min_x as u32, min_y as u32), (max_x as u32, max_y as u32)))
     }
 
-    fn sel_dimensions(&self) -> Option<(f32, f32)> {
-        let selection = self.selection.as_ref()?;
-        let width = (selection.end.x - selection.start.x).abs();
-        let height = (selection.end.y - selection.start.y).abs();
-        Some((width, height))
-    }
+    // fn sel_dimensions(&self) -> Option<(f32, f32)> {
+    //     let selection = self.selection.as_ref()?;
+    //     let width = (selection.end.x - selection.start.x).abs();
+    //     let height = (selection.end.y - selection.start.y).abs();
+    //     Some((width, height))
+    // }
 
     // fn get_
 }
 
+fn resize_image(
+    image: &RgbaImage,
+    scale: f32,
+    filter: FilterType,
+) -> Result<RgbaImage, ImageError> {
+    let new_width = (image.width() as f32 * scale).round() as u32;
+    let new_height = (image.height() as f32 * scale).round() as u32;
+    Ok(image::imageops::resize(
+        image, new_width, new_height, filter,
+    ))
+}
+
+fn generate_output_path(dir: &Path, filename: &str, format: ImageFormat) -> PathBuf {
+    let ext = format.extensions_str().first().copied().unwrap_or("png");
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%d-%H-%M-%S");
+    let filename = format!("{filename}-{}.{ext}", timestamp);
+
+    dir.join(filename)
+}
+
 pub struct AppContext {
-    size: PhysicalSize<u32>,
     mouse_position: DVec2,
     selection: UserSelection,
-    // current_drag: Option<Drag>,
-    // selection: Option<Selection>,
     image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    // pixels: Pixels<'static>,
     total_time: f32,
     last_frame: std::time::Instant,
     graphics: Graphics<Window>,
@@ -133,37 +156,64 @@ impl AppContext {
         self.selection.selection = None;
     }
 
-    fn get_selection_data(&self) -> Option<Vec<u8>> {
-        let ((min_x, min_y), (max_x, max_y)) = self.selection.sel_coords()?;
-        let img = self
-            .image
-            .view(min_x, min_y, max_x.abs_diff(min_x), max_y.abs_diff(min_y));
-        let image_data = img.to_image().to_vec();
-        Some(image_data)
+    fn get_selection_data(&self, ax: u32, ay: u32, bx: u32, by: u32) -> RgbaImage {
+        let img = self.image.view(ax, ay, bx.abs_diff(ax), by.abs_diff(ay));
+        img.to_image()
     }
 
-    pub fn save_selection_to_clipboard(&self) {
-        let (width, height) = self.selection.sel_dimensions().unwrap();
-
-        let width = width.floor() as usize;
-        let height = height.floor() as usize;
-
-        let image_data = self.get_selection_data().unwrap();
-
+    fn save_to_clipboard(&self, image_data: RgbaImage) {
         let mut clipboard = arboard::Clipboard::new().unwrap();
-        if width * height != image_data.len() / 4 {
-            eprintln!(
-                "Invalid selection size {:?} (w h p)",
-                (width, height, image_data.len() / 4)
-            );
-            return;
-        }
         let image_data = ImageData {
-            width,
-            height,
-            bytes: std::borrow::Cow::Owned(image_data),
+            width: image_data.width() as usize,
+            height: image_data.height() as usize,
+            bytes: std::borrow::Cow::Owned(image_data.to_vec()),
         };
         let _ = clipboard.set_image(image_data);
+    }
+
+    pub fn save_selection(&self, args: Option<&Args>) -> anyhow::Result<()> {
+        // Get dimensions and validate image data
+        let ((ax, ay), (bx, by)) = if let Some(region) = args.and_then(|a| a.region) {
+            (
+                (region.x, region.y),
+                ((region.x + region.width), (region.y + region.height)),
+            )
+        } else {
+            self.selection
+                .sel_coords()
+                .ok_or_else(|| anyhow::anyhow!("No selection made"))?
+        };
+
+        let mut image_data = self.get_selection_data(ax, ay, bx, by);
+
+        // Handle scaling if requested
+        if let Some(scale) = args.and_then(|a| a.scale) {
+            image_data = resize_image(
+                &image_data,
+                scale,
+                args.and_then(|a| a.filter).unwrap_or(FilterType::Nearest),
+            )?;
+        }
+
+        // Save to clipboard if no output directory specified
+        let Some(output_dir) = args.and_then(|f| f.output_dir.as_deref()) else {
+            return {
+                self.save_to_clipboard(image_data);
+                Ok(())
+            };
+        };
+
+        // Generate filename and save
+        let format = args
+            .and_then(|f| f.image_format)
+            .unwrap_or(ImageFormat::Png);
+        let path = generate_output_path(
+            output_dir,
+            args.and_then(|f| f.filename.as_deref()).unwrap_or("cleave"),
+            format,
+        );
+
+        Ok(image_data.save_with_format(path, format)?)
     }
 
     pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> anyhow::Result<Self> {
@@ -210,7 +260,6 @@ impl AppContext {
         // let pixels = Pixels::new(size.width, size.height, surface_texture)?;
 
         Ok(Self {
-            size,
             image: img,
             bundle,
             total_time: 0.0,
@@ -235,18 +284,18 @@ impl AppContext {
 
         match self.mode {
             SelectionMode::Move => {
-                selection.start.x = (selection.start.x + dx).clamp(0.0, self.size.width as f32);
-                selection.start.y = (selection.start.y + dy).clamp(0.0, self.size.height as f32);
-                selection.end.x = (selection.end.x + dx).clamp(0.0, self.size.width as f32);
-                selection.end.y = (selection.end.y + dy).clamp(0.0, self.size.height as f32);
+                selection.start.x = (selection.start.x + dx).clamp(0.0, self.image.width() as f32);
+                selection.start.y = (selection.start.y + dy).clamp(0.0, self.image.height() as f32);
+                selection.end.x = (selection.end.x + dx).clamp(0.0, self.image.width() as f32);
+                selection.end.y = (selection.end.y + dy).clamp(0.0, self.image.height() as f32);
             }
             SelectionMode::Resize => {
-                selection.end.x = (selection.end.x + dx).clamp(0.0, self.size.width as f32);
-                selection.end.y = (selection.end.y + dy).clamp(0.0, self.size.height as f32);
+                selection.end.x = (selection.end.x + dx).clamp(0.0, self.image.width() as f32);
+                selection.end.y = (selection.end.y + dy).clamp(0.0, self.image.height() as f32);
             }
             SelectionMode::InverseResize => {
-                selection.start.x = (selection.start.x + dx).clamp(0.0, self.size.width as f32);
-                selection.start.y = (selection.start.y + dy).clamp(0.0, self.size.height as f32);
+                selection.start.x = (selection.start.x + dx).clamp(0.0, self.image.width() as f32);
+                selection.start.y = (selection.start.y + dy).clamp(0.0, self.image.height() as f32);
             }
         }
 
@@ -275,8 +324,8 @@ impl AppContext {
 
     fn update_uniforms(&mut self) {
         self.bundle.uniforms.time = self.total_time;
-        self.bundle.uniforms.screen_size.x = self.size.width as f32;
-        self.bundle.uniforms.screen_size.y = self.size.height as f32;
+        self.bundle.uniforms.screen_size.x = self.image.width() as f32;
+        self.bundle.uniforms.screen_size.y = self.image.height() as f32;
 
         let drag = self.selection.drag;
         let selection = self.selection.selection;
@@ -325,5 +374,25 @@ impl AppContext {
         if let Some(drag) = self.selection.drag.as_mut() {
             drag.end = Some(self.mouse_position.as_vec2());
         }
+    }
+
+    pub fn set_args(mut self, args: &crate::args::Args) -> Option<Self> {
+        // self.bundle.uniforms.screen_size.x = args.width as f32;
+        // self.bundle.uniforms.screen_size.y = args.height as f32;
+        if let Some(region) = args.region {
+            self.selection.selection = Some(Selection {
+                start: Vec2::new(region.x as f32, region.y as f32),
+                end: Vec2::new(
+                    (region.x + region.width) as f32,
+                    (region.y + region.height) as f32,
+                ),
+            });
+            if let Err(e) = self.save_selection(Some(args)) {
+                eprintln!("Error saving selection: {:?}", e);
+            };
+            return None;
+        }
+
+        Some(self)
     }
 }

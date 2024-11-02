@@ -43,6 +43,17 @@ fn parse_format(s: &str) -> Result<ImageFormat, String> {
     }
 }
 
+fn parse_filter(s: &str) -> Result<image::imageops::FilterType, String> {
+    match s {
+        "Nearest" => Ok(image::imageops::FilterType::Nearest),
+        "Triangle" => Ok(image::imageops::FilterType::Triangle),
+        "CatmullRom" => Ok(image::imageops::FilterType::CatmullRom),
+        "Gaussian" => Ok(image::imageops::FilterType::Gaussian),
+        "Lanczos3" => Ok(image::imageops::FilterType::Lanczos3),
+        _ => Err("Invalid filter type".into()),
+    }
+}
+
 /// Cleave - A GPU-accelerated screen capture tool
 #[derive(clap::Parser, Debug)]
 #[command(
@@ -93,11 +104,11 @@ pub struct Args {
     /// List available monitors and exit
     #[arg(long, short = 'l')]
     pub monitor_list: bool,
-    /// Path to the configuration file
-    ///
-    /// If not provided, the default configuration is used
-    #[arg(long, short = 'c')]
-    pub config_path: Option<PathBuf>,
+    // /// Path to the configuration file
+    // ///
+    // /// If not provided, the default configuration is used
+    // #[arg(long, short = 'c')]
+    // pub config_path: Option<PathBuf>,
     // TODO: Implement these features
     // /// Optimize the captured image when applicable
     // #[arg(long, short='p')]
@@ -105,6 +116,14 @@ pub struct Args {
     /// Scale the captured image by a factor
     #[arg(long, short = 's')]
     pub scale: Option<f32>,
+    /// Filter to use when scaling the image
+    ///
+    /// Supported filters: Nearest, Triangle, CatmullRom, Gaussian, Lanczos3
+    ///
+    /// Only used when scale is provided
+    #[arg(long, short = 'q', value_parser=parse_filter)]
+    pub filter: Option<image::imageops::FilterType>,
+
     /// Notify the user when the capture is complete
     #[arg(long, short = 'n')]
     pub notify: bool,
@@ -113,4 +132,37 @@ pub struct Args {
     /// If provided, app runs in the background and captures the screen whenever the user presses a hotkey
     #[arg(long)]
     pub daemon_hotkey: Option<String>,
+}
+
+impl Args {
+    pub fn verify(&self) -> Result<(), String> {
+        if self.monitor_list
+            && (self.output_dir.is_some()
+                || self.image_format.is_some()
+                || self.filename.is_some()
+                || self.region.is_some()
+                || self.scale.is_some()
+                || self.notify
+                || self.daemon_hotkey.is_some())
+        {
+            return Err("Monitor list option cannot be used with other options".into());
+        }
+        if let Some(scale) = self.scale {
+            if scale <= 0.0 {
+                return Err("Scale factor must be greater than 0".into());
+            }
+        }
+        if let Some(region) = self.region {
+            if region.width == 0 || region.height == 0 {
+                return Err("Region width and height must be greater than 0".into());
+            }
+        }
+        if (self.image_format.is_some() || self.filename.is_some()) && self.output_dir.is_none() {
+            return Err(
+                "Output format and filename is only used when output directory is provided".into(),
+            );
+        }
+
+        Ok(())
+    }
 }

@@ -1,5 +1,4 @@
 use crate::args::Args;
-use clap::Parser;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, MouseButton, WindowEvent},
@@ -23,6 +22,23 @@ impl App {
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         if let Some(args) = &self.args {
+            if let Err(e) = args.verify() {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+
+            if args.monitor_list {
+                println!("Available monitors:");
+                for monitor in xcap::Monitor::all().into_iter().flatten() {
+                    println!("ID: {}", monitor.id());
+                }
+                std::process::exit(0);
+            }
+
+            if args.delay > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(args.delay));
+            }
+
             if let Some(output_dir) = &args.output_dir {
                 std::fs::create_dir_all(output_dir)?;
             }
@@ -39,8 +55,16 @@ impl ApplicationHandler for App {
         if self.context.is_some() {
             return;
         }
+        let mut context = AppContext::new(event_loop).expect("Could not start context");
 
-        let context = AppContext::new(event_loop).expect("Could not start context");
+        if let Some(args) = &self.args {
+            let Some(arg_context) = context.set_args(args) else {
+                event_loop.exit();
+                return;
+            };
+            context = arg_context;
+        }
+
         self.context = Some(context);
     }
 
@@ -79,7 +103,9 @@ impl ApplicationHandler for App {
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::Space)) => {
                     context.hide_window();
-                    context.save_selection_to_clipboard();
+                    if let Err(e) = context.save_selection(self.args.as_ref()) {
+                        eprintln!("{}", e);
+                    };
                     event_loop.exit();
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::ArrowDown)) => {
