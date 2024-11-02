@@ -11,6 +11,7 @@ use winit::{
 // use crate::{graphics_bundle::GraphicsBundle, graphics_impl::Graphics};
 use cleave_graphics::prelude::*;
 
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum SelectionMode {
     Move,          // Move the selection
     InverseResize, // Make the selection smaller
