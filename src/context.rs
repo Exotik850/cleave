@@ -107,13 +107,13 @@ fn resize_image(
     ))
 }
 
-fn generate_output_path(dir: &Path, filename: &str, format: ImageFormat) -> PathBuf {
+fn generate_output_path(dir: impl AsRef<Path>, filename: &str, format: ImageFormat) -> PathBuf {
     let ext = format.extensions_str().first().copied().unwrap_or("png");
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d-%H-%M-%S");
     let filename = format!("{filename}-{}.{ext}", timestamp);
 
-    dir.join(filename)
+    dir.as_ref().join(filename)
 }
 
 pub struct AppContext {
@@ -172,66 +172,23 @@ impl AppContext {
     }
 
     pub fn save_selection(&self, args: Option<&Args>) -> anyhow::Result<()> {
-        // Get dimensions and validate image data
-        let ((ax, ay), (bx, by)) = if let Some(region) = args.and_then(|a| a.region) {
-            (
-                (region.x, region.y),
-                ((region.x + region.width), (region.y + region.height)),
-            )
-        } else {
-            self.selection
-                .sel_coords()
-                .ok_or_else(|| anyhow::anyhow!("No selection made"))?
+        let image_data = crop_image(&self.image, args, &self.selection)?;
+
+        let Some(output) = args.and_then(|a| a.output_dir.as_deref()) else {
+            self.save_to_clipboard(image_data);
+            return Ok(());
         };
 
-        let mut image_data = self.get_selection_data(ax, ay, bx, by);
-
-        // Handle scaling if requested
-        if let Some(scale) = args.and_then(|a| a.scale) {
-            image_data = resize_image(
-                &image_data,
-                scale,
-                args.and_then(|a| a.filter).unwrap_or(FilterType::Nearest),
-            )?;
-        }
-
-        // Save to clipboard if no output directory specified
-        let Some(output_dir) = args.and_then(|f| f.output_dir.as_deref()) else {
-            return {
-                self.save_to_clipboard(image_data);
-                Ok(())
-            };
-        };
-
-        // Generate filename and save
-        let format = args
-            .and_then(|f| f.image_format)
-            .unwrap_or(ImageFormat::Png);
-        let path = generate_output_path(
-            output_dir,
-            args.and_then(|f| f.filename.as_deref()).unwrap_or("cleave"),
-            format,
-        );
-
-        Ok(image_data.save_with_format(path, format)?)
+        save_selection(image_data, args, &self.selection, output)
     }
 
     pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> anyhow::Result<Self> {
-        let monitor = xcap::Monitor::all()?
-            .into_iter()
-            .find(|m| m.is_primary())
-            .with_context(|| "Could not get primary monitor")?;
-        let img = monitor.capture_image()?;
-        let size = PhysicalSize::new(monitor.width(), monitor.height());
-
-        let icon_bytes = include_bytes!("../icon.png");
-        let rgba = image::load_from_memory(icon_bytes)?.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        let rgba = rgba.into_raw();
+        let img = capture_screen()?;
+        let (width, height, rgba) = load_icon()?;
 
         let window = event_loop.create_window(
             WindowAttributes::default()
-                .with_inner_size(size)
+                .with_inner_size(PhysicalSize::new(img.width(), img.height()))
                 .with_title("Cleave")
                 .with_resizable(false)
                 .with_decorations(false)
@@ -240,7 +197,7 @@ impl AppContext {
                 .with_window_icon(Some(Icon::from_rgba(rgba, width, height)?)),
         )?;
 
-        let graphics = Graphics::new(window, size.width, size.height);
+        let graphics = Graphics::new(window, img.width(), img.height());
         let graphics = pollster::block_on(graphics)?;
 
         let bundle = GraphicsBundle::new(
@@ -251,7 +208,8 @@ impl AppContext {
             graphics.config.format,
         );
 
-        graphics.window.set_visible(true);
+        // graphics.window.set_visible(true);
+
         let _ = graphics
             .window
             .set_cursor_grab(winit::window::CursorGrabMode::Confined);
@@ -361,8 +319,8 @@ impl AppContext {
         self.graphics.window.set_minimized(true);
     }
 
-    pub fn hide_window(&self) {
-        self.graphics.set_visible(false);
+    pub fn set_window_visibility(&self, val: bool) {
+        self.graphics.set_visible(val);
     }
 
     pub fn set_mode(&mut self, mode: SelectionMode) {
@@ -395,4 +353,68 @@ impl AppContext {
 
         Some(self)
     }
+}
+
+fn crop_image(
+    img: &RgbaImage,
+    args: Option<&Args>,
+    selection: &UserSelection,
+) -> anyhow::Result<RgbaImage> {
+    let ((ax, ay), (bx, by)) = if let Some(region) = args.and_then(|a| a.region) {
+        (
+            (region.x, region.y),
+            ((region.x + region.width), (region.y + region.height)),
+        )
+    } else {
+        selection
+            .sel_coords()
+            .ok_or_else(|| anyhow::anyhow!("No selection made"))?
+    };
+
+    Ok(img.view(ax, ay, bx.abs_diff(ax), by.abs_diff(ay)).to_image())
+}
+
+fn save_selection(
+    mut image: RgbaImage,
+    args: Option<&Args>,
+    selection: &UserSelection,
+    save_path: impl AsRef<Path>,
+) -> anyhow::Result<()> {
+    // Handle scaling if requested
+    if let Some(scale) = args.and_then(|a| a.scale) {
+        image = resize_image(
+            &image,
+            scale,
+            args.and_then(|a| a.filter).unwrap_or(FilterType::Nearest),
+        )?;
+    }
+
+    // Generate filename and save
+    let format = args
+        .and_then(|f| f.image_format)
+        .unwrap_or(ImageFormat::Png);
+    let path = generate_output_path(
+        save_path,
+        args.and_then(|f| f.filename.as_deref()).unwrap_or("cleave"),
+        format,
+    );
+
+    Ok(image.save_with_format(path, format)?)
+}
+
+fn capture_screen() -> anyhow::Result<ImageBuffer<Rgba<u8>, Vec<u8>>> {
+    let monitor = xcap::Monitor::all()?
+        .into_iter()
+        .find(|m| m.is_primary())
+        .with_context(|| "Could not get primary monitor")?;
+    let img = monitor.capture_image()?;
+    Ok(img)
+}
+
+fn load_icon() -> Result<(u32, u32, Vec<u8>), anyhow::Error> {
+    let icon_bytes = include_bytes!("../icon.png");
+    let rgba = image::load_from_memory(icon_bytes)?.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let rgba = rgba.into_raw();
+    Ok((width, height, rgba))
 }
