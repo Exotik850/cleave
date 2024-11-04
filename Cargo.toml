@@ -18,14 +18,18 @@ image = { workspace = true }
 pollster = { workspace = true }
 wgpu = { workspace = true }
 xcap = { workspace = true }
+thiserror = { workspace = true }
 cleave-graphics = { path = "cleave-graphics" }
 clap = { version = "4.5.20", features = ["derive"] }
 chrono = "0.4.38"
+keyboard-types = "0.7.0"
+device_query = "2.1.0"
 
 
 [workspace.dependencies]
 anyhow = "1"
 arboard = "3.4.1"
+thiserror = "1"
 bytemuck = { version = "1.19.0", features = ["derive"] }
 glam = { version = "0.29.1", features = ["bytemuck"] }
 image = "0.25.4"

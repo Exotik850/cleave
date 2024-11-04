@@ -1,3 +1,4 @@
+
 use crate::args::Args;
 use winit::{
     application::ApplicationHandler,
@@ -33,6 +34,12 @@ impl App {
                     println!("ID: {}", monitor.id());
                 }
                 std::process::exit(0);
+            }
+
+            if let Some(hotkey) = &args.daemon_hotkey {
+                // Wait until the hotkey is pressed
+                let hotkey: crate::hotkey::HotKey = hotkey.parse()?;
+                crate::hotkey::wait_until_pressed(hotkey);
             }
 
             if args.delay > 0 {

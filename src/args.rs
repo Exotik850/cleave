@@ -124,9 +124,6 @@ pub struct Args {
     #[arg(long, short = 'q', value_parser=parse_filter)]
     pub filter: Option<image::imageops::FilterType>,
 
-    /// Notify the user when the capture is complete
-    #[arg(long, short = 'n')]
-    pub notify: bool,
     /// Daemon Mode Hotkey
     ///
     /// If provided, app runs in the background and captures the screen whenever the user presses a hotkey
@@ -142,7 +139,6 @@ impl Args {
                 || self.filename.is_some()
                 || self.region.is_some()
                 || self.scale.is_some()
-                || self.notify
                 || self.daemon_hotkey.is_some())
         {
             return Err("Monitor list option cannot be used with other options".into());
