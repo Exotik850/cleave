@@ -1,14 +1,9 @@
-use device_query::{DeviceQuery, Keycode};
-pub use keyboard_types::{Code, Modifiers};
-use std::{borrow::Borrow, fmt::Display, hash::Hash, str::FromStr};
+use std::{borrow::Borrow, fmt::Display, str::FromStr};
 
-use crate::keycode_to_code;
-use device_query::{DeviceEvents, DeviceState};
-
-#[cfg(target_os = "macos")]
-pub const CMD_OR_CTRL: Modifiers = Modifiers::SUPER;
-#[cfg(not(target_os = "macos"))]
-pub const CMD_OR_CTRL: Modifiers = Modifiers::CONTROL;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, ModifiersState},
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum HotKeyParseError {
@@ -23,86 +18,55 @@ pub enum HotKeyParseError {
 /// A keyboard shortcut that consists of an optional combination
 /// of modifier keys (provided by [`Modifiers`](crate::hotkey::Modifiers)) and
 /// one key ([`Code`](crate::hotkey::Code)).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HotKey {
     /// The hotkey modifiers.
     pub mods: Modifiers,
     /// The hotkey key.
-    pub key: Code,
-    /// The hotkey id.
-    pub id: u32,
+    pub key: KeyCode,
 }
 
 impl HotKey {
     /// Creates a new hotkey to define keyboard shortcuts throughout your application.
     /// Only [`Modifiers::ALT`], [`Modifiers::SHIFT`], [`Modifiers::CONTROL`], and [`Modifiers::SUPER`]
-    pub fn new(mods: Option<Modifiers>, key: Code) -> Self {
-        let mut mods = mods.unwrap_or_else(Modifiers::empty);
-        if mods.contains(Modifiers::META) {
-            mods.remove(Modifiers::META);
-            mods.insert(Modifiers::SUPER);
-        }
-
-        Self {
-            mods,
-            key,
-            id: mods.bits() << 16 | key as u32,
-        }
-    }
-
-    pub fn check(&self, codes: impl IntoIterator<Item = Keycode>) -> bool {
-        let mut mods = Modifiers::empty();
-        let mut code = None;
-        for key in codes {
-            match key {
-                Keycode::LShift | Keycode::RShift => mods |= Modifiers::SHIFT,
-                Keycode::LControl | Keycode::RControl => mods |= Modifiers::CONTROL,
-                Keycode::LAlt | Keycode::RAlt => mods |= Modifiers::ALT,
-                Keycode::LMeta | Keycode::RMeta => mods |= Modifiers::SUPER,
-                other => {
-                    code = Some(other);
-                }
-            }
-        }
-
-        if code.is_none() {
-            return false;
-        }
-
-        self.matches(mods, keycode_to_code(code.unwrap()))
-    }
-
-    /// Returns the id associated with this hotKey
-    /// which is a hash of the string represention of modifiers and key within this hotKey.
-    pub fn id(&self) -> u32 {
-        self.id
+    pub fn new(mods: Option<Modifiers>, key: KeyCode) -> Self {
+        let mods = mods.unwrap_or_default();
+        Self { mods, key }
     }
 
     /// Returns `true` if this [`Code`] and [`Modifiers`] matches this hotkey.
-    pub fn matches(&self, modifiers: impl Borrow<Modifiers>, key: impl Borrow<Code>) -> bool {
+    pub fn matches(
+        &self,
+        modifiers: impl Borrow<ModifiersState>,
+        key: impl Borrow<KeyCode>,
+    ) -> bool {
         // Should be a const but const bit_or doesn't work here.
-        let base_mods = Modifiers::SHIFT | Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
+        let base_mods = ModifiersState::SHIFT
+            | ModifiersState::CONTROL
+            | ModifiersState::ALT
+            | ModifiersState::SUPER;
         let modifiers = modifiers.borrow();
         let key = key.borrow();
-        self.mods == *modifiers & base_mods && self.key == *key
+        dbg!((self.mods == (*modifiers & base_mods).into())) && dbg!((self.key == *key))
     }
 
     /// Converts this hotkey into a string.
     pub fn into_string(self) -> String {
         let mut hotkey = String::new();
-        if self.mods.contains(Modifiers::SHIFT) {
-            hotkey.push_str("shift+")
+        let state = self.mods.state();
+        if state.contains(ModifiersState::SHIFT) {
+            hotkey.push_str("shift+");
         }
-        if self.mods.contains(Modifiers::CONTROL) {
-            hotkey.push_str("control+")
+        if state.contains(ModifiersState::CONTROL) {
+            hotkey.push_str("control+");
         }
-        if self.mods.contains(Modifiers::ALT) {
-            hotkey.push_str("alt+")
+        if state.contains(ModifiersState::ALT) {
+            hotkey.push_str("alt+");
         }
-        if self.mods.contains(Modifiers::SUPER) {
-            hotkey.push_str("super+")
+        if state.contains(ModifiersState::SUPER) {
+            hotkey.push_str("super+");
         }
-        hotkey.push_str(&self.key.to_string());
+        hotkey.push_str(&format!("{:?}", self.key).to_lowercase());
         hotkey
     }
 }
@@ -142,7 +106,7 @@ impl TryFrom<String> for HotKey {
 fn parse_hotkey(hotkey: &str) -> Result<HotKey, HotKeyParseError> {
     let tokens = hotkey.split('+').collect::<Vec<&str>>();
 
-    let mut mods = Modifiers::empty();
+    let mut mods = ModifiersState::empty();
     let mut key = None;
 
     match tokens.len() {
@@ -171,24 +135,24 @@ fn parse_hotkey(hotkey: &str) -> Result<HotKey, HotKeyParseError> {
 
                 match token.to_uppercase().as_str() {
                     "OPTION" | "ALT" => {
-                        mods |= Modifiers::ALT;
+                        mods |= ModifiersState::ALT;
                     }
                     "CONTROL" | "CTRL" => {
-                        mods |= Modifiers::CONTROL;
+                        mods |= ModifiersState::CONTROL;
                     }
                     "COMMAND" | "CMD" | "SUPER" => {
-                        mods |= Modifiers::SUPER;
+                        mods |= ModifiersState::SUPER;
                     }
                     "SHIFT" => {
-                        mods |= Modifiers::SHIFT;
+                        mods |= ModifiersState::SHIFT;
                     }
                     #[cfg(target_os = "macos")]
                     "COMMANDORCONTROL" | "COMMANDORCTRL" | "CMDORCTRL" | "CMDORCONTROL" => {
-                        mods |= Modifiers::SUPER;
+                        mods |= ModifiersState::SUPER;
                     }
                     #[cfg(not(target_os = "macos"))]
                     "COMMANDORCONTROL" | "COMMANDORCTRL" | "CMDORCTRL" | "CMDORCONTROL" => {
-                        mods |= Modifiers::CONTROL;
+                        mods |= ModifiersState::CONTROL;
                     }
                     _ => {
                         key = Some(parse_key(token)?);
@@ -199,13 +163,13 @@ fn parse_hotkey(hotkey: &str) -> Result<HotKey, HotKeyParseError> {
     }
 
     Ok(HotKey::new(
-        Some(mods),
+        Some(mods.into()),
         key.ok_or_else(|| HotKeyParseError::InvalidFormat(hotkey.to_string()))?,
     ))
 }
 
-fn parse_key(key: &str) -> Result<Code, HotKeyParseError> {
-    use Code::*;
+fn parse_key(key: &str) -> Result<KeyCode, HotKeyParseError> {
+    use KeyCode::*;
     match key.to_uppercase().as_str() {
         "BACKQUOTE" | "`" => Ok(Backquote),
         "BACKSLASH" | "\\" => Ok(Backslash),
@@ -306,8 +270,8 @@ fn parse_key(key: &str) -> Result<Code, HotKeyParseError> {
         "AUDIOVOLUMEDOWN" | "VOLUMEDOWN" => Ok(AudioVolumeDown),
         "AUDIOVOLUMEUP" | "VOLUMEUP" => Ok(AudioVolumeUp),
         "AUDIOVOLUMEMUTE" | "VOLUMEMUTE" => Ok(AudioVolumeMute),
-        "MEDIAPLAY" => Ok(MediaPlay),
-        "MEDIAPAUSE" => Ok(MediaPause),
+        // "MEDIAPLAY" => Ok(Media),
+        // "MEDIAPAUSE" => Ok(MediaPause),
         "MEDIAPLAYPAUSE" => Ok(MediaPlayPause),
         "MEDIASTOP" => Ok(MediaStop),
         "MEDIATRACKNEXT" => Ok(MediaTrackNext),

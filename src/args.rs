@@ -1,19 +1,13 @@
 use std::path::PathBuf;
 
 use image::ImageFormat;
+use wgpu::core::command::Rect;
 
-use crate::context::SelectionMode;
+use crate::keyboard::hotkey::HotKey;
+use crate::selection::modes::SelectionMode;
 
-#[derive(Debug, Copy, Clone)]
-pub struct Region {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-}
-
-fn parse_region(s: &str) -> Result<Region, String> {
-    let coords: Vec<u32> = s
+fn parse_region(s: &str) -> Result<Rect<f32>, String> {
+    let coords: Vec<f32> = s
         .split(',')
         .map(|s| s.parse().map_err(|_| "Invalid region format"))
         .collect::<Result<Vec<_>, _>>()?;
@@ -22,11 +16,11 @@ fn parse_region(s: &str) -> Result<Region, String> {
         return Err("Region must be in format: x,y,width,height".into());
     }
 
-    Ok(Region {
+    Ok(Rect {
         x: coords[0],
         y: coords[1],
-        width: coords[2],
-        height: coords[3],
+        w: coords[2],
+        h: coords[3],
     })
 }
 
@@ -83,13 +77,13 @@ pub struct Args {
     ///
     /// If not provided, the primary monitor is used
     #[arg(long)]
-    pub monitor: Option<usize>, // If not provided, the primary monitor is used
+    pub monitor: Option<u32>, // If not provided, the primary monitor is used
     /// Region to capture in the format: x,y,width,height
     ///
     /// If not provided, the entire screen is captured and the user is prompted to select a region
     /// If provided, the user is not prompted and the region is captured immediately
     #[arg(long, short='r', value_parser=parse_region)]
-    pub region: Option<Region>,
+    pub region: Option<Rect<f32>>,
     /// Filename for the captured image
     ///
     /// If not provided, the image is saved with a timestamp: 'cleave-YYYY-MM-DD-HH-MM-SS'
@@ -141,7 +135,7 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn verify(&self) -> Result<(), String> {
+    pub fn verify(self) -> anyhow::Result<Verified> {
         if self.monitor_list
             && (self.output_dir.is_some()
                 || self.image_format.is_some()
@@ -150,33 +144,72 @@ impl Args {
                 || self.scale.is_some()
                 || self.daemon_hotkey.is_some())
         {
-            return Err("Monitor list option cannot be used with other options".into());
+            anyhow::bail!("Monitor list option cannot be used with other options");
         }
         if let Some(scale) = self.scale {
             if scale <= 0.0 {
-                return Err("Scale factor must be greater than 0".into());
+                anyhow::bail!("Scale factor must be greater than 0");
             }
         }
         if let Some(region) = self.region {
-            if region.width == 0 || region.height == 0 {
-                return Err("Region width and height must be greater than 0".into());
+            if region.w == 0. || region.h == 0. {
+                anyhow::bail!("Region width and height must be greater than 0");
             }
         }
         if (self.image_format.is_some() || self.filename.is_some()) && self.output_dir.is_none() {
-            return Err(
-                "Output format and filename is only used when output directory is provided".into(),
+            anyhow::bail!(
+                "Output format and filename is only used when output directory is provided"
             );
         }
         if self.persistent && self.daemon_hotkey.is_none() {
-            return Err("Persistent daemon mode can only be used with daemon hotkey".into());
+            anyhow::bail!("Persistent daemon mode can only be used with daemon hotkey");
         }
         if self.daemon_hotkey.is_some() && self.delay > 0 {
-            return Err("Delay cannot be used with daemon hotkey".into());
+            anyhow::bail!("Delay cannot be used with daemon hotkey");
+        }
+        if let Some(hotkey) = &self.daemon_hotkey {
+            if hotkey.is_empty() {
+                anyhow::bail!("Hotkey cannot be empty");
+            }
         }
 
-        Ok(())
-    }
+        let daemon_hotkey = self.daemon_hotkey.map(|s| s.parse()).transpose()?;
 
+        Ok(Verified {
+            output_dir: self.output_dir,
+            image_format: self.image_format,
+            mode: self.mode,
+            monitor: self.monitor,
+            region: self.region,
+            filename: self.filename,
+            delay: self.delay,
+            monitor_list: self.monitor_list,
+            config_path: None,
+            scale: self.scale,
+            filter: self.filter,
+            daemon_hotkey,
+            persistent: self.persistent,
+        })
+    }
+}
+
+pub struct Verified {
+    pub output_dir: Option<PathBuf>,
+    pub image_format: Option<ImageFormat>,
+    pub mode: SelectionMode,
+    pub monitor: Option<u32>,
+    pub region: Option<Rect<f32>>,
+    pub filename: Option<String>,
+    pub delay: u64,
+    pub monitor_list: bool,
+    pub config_path: Option<PathBuf>,
+    pub scale: Option<f32>,
+    pub filter: Option<image::imageops::FilterType>,
+    pub daemon_hotkey: Option<HotKey>,
+    pub persistent: bool,
+}
+
+impl Verified {
     pub fn stay_running(&self) -> bool {
         self.daemon_hotkey.is_some() && self.persistent
     }
