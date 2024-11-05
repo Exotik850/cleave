@@ -3,6 +3,7 @@ pub use keyboard_types::{Code, Modifiers};
 use std::{borrow::Borrow, fmt::Display, hash::Hash, str::FromStr};
 
 use crate::keycode_to_code;
+use device_query::{DeviceEvents, DeviceState};
 
 #[cfg(target_os = "macos")]
 pub const CMD_OR_CTRL: Modifiers = Modifiers::SUPER;
@@ -327,18 +328,3 @@ fn parse_key(key: &str) -> Result<Code, HotKeyParseError> {
         _ => Err(HotKeyParseError::UnsupportedKey(key.to_string())),
     }
 }
-
-pub fn wait_until_pressed(hotkey: HotKey) {
-    let state = device_query::DeviceState::new();
-    println!("Waiting for hotkey: {}", hotkey);
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        if hotkey.check(state.get_keys()) {
-            break;
-        }
-    }
-}
-
-// struct KeyCatcher {
-//    pressed: HashSet<Code>,
-// }

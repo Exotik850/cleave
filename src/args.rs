@@ -129,6 +129,15 @@ pub struct Args {
     /// If provided, app runs in the background and captures the screen whenever the user presses a hotkey
     #[arg(long)]
     pub daemon_hotkey: Option<String>,
+
+    /// Persistent Daemon Mode
+    ///
+    /// If true, the app will continue to run in the background even after the hotkey is pressed,
+    /// allowing the user to capture the screen multiple times
+    ///
+    /// Only used when daemon_hotkey is provided
+    #[arg(long, short)]
+    pub persistent: bool,
 }
 
 impl Args {
@@ -158,7 +167,17 @@ impl Args {
                 "Output format and filename is only used when output directory is provided".into(),
             );
         }
+        if self.persistent && self.daemon_hotkey.is_none() {
+            return Err("Persistent daemon mode can only be used with daemon hotkey".into());
+        }
+        if self.daemon_hotkey.is_some() && self.delay > 0 {
+            return Err("Delay cannot be used with daemon hotkey".into());
+        }
 
         Ok(())
+    }
+
+    pub fn stay_running(&self) -> bool {
+        self.daemon_hotkey.is_some() && self.persistent
     }
 }

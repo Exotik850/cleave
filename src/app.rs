@@ -1,27 +1,62 @@
+use std::sync::{atomic::AtomicBool, mpsc::TryRecvError};
 
-use crate::args::Args;
+use crate::{args::Args, hotkey::HotKey};
+use device_query::{DeviceEvents, DeviceEventsHandler, DeviceQuery, KeyboardCallback, Keycode};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, MouseButton, WindowEvent},
+    event_loop::EventLoop,
     keyboard::{Key, NamedKey},
 };
 
 use crate::context::{AppContext, Direction, SelectionMode};
 
-pub struct App {
+#[derive(Debug)]
+struct KeyAction {
+    key: Keycode,
+    pressed: bool,
+}
+
+struct Daemon<Up: ?Sized, Down: ?Sized> {
+    pressed: Vec<Keycode>,
+    rx: std::sync::mpsc::Receiver<KeyAction>,
+    _event_handler: DeviceEventsHandler,
+    hotkey: HotKey,
+    key_up: device_query::CallbackGuard<Up>,
+    key_down: device_query::CallbackGuard<Down>,
+}
+
+impl<U: ?Sized, D: ?Sized> Daemon<U, D> {
+    fn clear_buffer(&mut self) {
+        for action in self.rx.iter() {
+            println!("{:?}", action);
+            if action.pressed {
+                self.pressed.push(action.key);
+            } else {
+                self.pressed.retain(|&x| x != action.key);
+            }
+        }
+    }
+}
+
+pub struct App<Up, Down> {
     args: Option<Args>,
+    daemon: Option<Daemon<Up, Down>>,
     context: Option<AppContext>,
 }
 
-impl App {
+impl<U, D> App<U, D> {
     pub fn new(args: Option<Args>) -> Self {
         App {
             args,
             context: None,
+            daemon: None,
         }
     }
 
-    pub fn run(&mut self) -> anyhow::Result<()> {
+    pub fn run(mut self) -> anyhow::Result<()> {
+        let mut start_daemon = None;
+
         if let Some(args) = &self.args {
             if let Err(e) = args.verify() {
                 eprintln!("{}", e);
@@ -39,7 +74,8 @@ impl App {
             if let Some(hotkey) = &args.daemon_hotkey {
                 // Wait until the hotkey is pressed
                 let hotkey: crate::hotkey::HotKey = hotkey.parse()?;
-                crate::hotkey::wait_until_pressed(hotkey);
+                // crate::hotkey::wait_until_pressed(hotkey);
+                start_daemon = Some(hotkey);
             }
 
             if args.delay > 0 {
@@ -50,14 +86,54 @@ impl App {
                 std::fs::create_dir_all(output_dir)?;
             }
         }
+        let daemon = start_daemon.map(|hotkey| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _event_handler =
+                device_query::DeviceEventsHandler::new(std::time::Duration::from_millis(10))
+                    .expect("Could not start event loop");
+            let txa = tx.clone();
+            let key_down = _event_handler.on_key_down(move |key| {
+                let _ = txa.send(KeyAction {
+                    key: *key,
+                    pressed: true,
+                });
+            });
+            let key_up = _event_handler.on_key_up(move |key| {
+                let _ = tx.send(KeyAction {
+                    key: *key,
+                    pressed: false,
+                });
+            });
+            Daemon {
+                _event_handler,
+                rx,
+                pressed: Vec::new(),
+                key_up,
+                key_down,
+                hotkey,
+            }
+        });
 
-        let event_loop = winit::event_loop::EventLoop::new()?;
-        event_loop.run_app(self)?;
-        Ok(())
+        // match daemon {
+        //     Some(daemon) => loop {
+        //         if let Ok(_) = daemon.rx.try_recv() {
+        //             self.start_loop()?;
+        //             if daemon.stay_running {
+        //                 continue;
+        //             }
+        //             break;
+        //         }
+        //     },
+        //     None => self.start_loop()?,
+        // }
+        self.daemon = daemon;
+
+        let event_loop = EventLoop::new()?;
+        Ok(event_loop.run_app(&mut self)?)
     }
 }
 
-impl ApplicationHandler for App {
+impl<U, D> ApplicationHandler for App<U, D> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.context.is_some() {
             return;
@@ -84,9 +160,18 @@ impl ApplicationHandler for App {
         let Some(context) = &mut self.context else {
             return;
         };
+        if let Some(daemon) = self.daemon.as_mut() {
+            daemon.clear_buffer();
+            if !daemon.hotkey.check(daemon.pressed.iter().copied()) {
+                return;
+            }
+            daemon.pressed.clear();
+        }
         if id != context.window_id() {
             return;
         }
+
+        let stay_running = self.args.as_ref().is_some_and(|d| d.stay_running());
 
         match event {
             WindowEvent::RedrawRequested => {
@@ -105,15 +190,19 @@ impl ApplicationHandler for App {
                 ..
             } => match (state, key) {
                 (ElementState::Pressed, Key::Named(NamedKey::Escape)) => {
-                    event_loop.exit();
-                    context.destroy();
+                    if !stay_running {
+                        event_loop.exit();
+                        context.destroy();
+                    }
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::Space)) => {
-                    context.hide_window();
+                    context.set_window_visibility(false);
                     if let Err(e) = context.save_selection(self.args.as_ref()) {
                         eprintln!("{}", e);
                     };
-                    event_loop.exit();
+                    if !stay_running {
+                        event_loop.exit();
+                    }
                 }
                 (ElementState::Pressed, Key::Named(NamedKey::ArrowDown)) => {
                     context.handle_move(Direction::Down);

@@ -23,8 +23,9 @@ cleave-graphics = { path = "cleave-graphics" }
 clap = { version = "4.5.20", features = ["derive"] }
 chrono = "0.4.38"
 keyboard-types = "0.7.0"
-device_query = "2.1.0"
-
+device_query = { path = "../device_query" }
+# device_query = { git = "https://github.com/exotik850/device_query", branch = "sleep_duration" }
+# device_query = "2.1.0"
 
 [workspace.dependencies]
 anyhow = "1"
