@@ -1,15 +1,19 @@
+use std::sync::{Arc, Mutex};
+
 use crate::{
     args::{Args, Verified},
     selection::modes::{Direction, SelectionMode},
 };
 
 use current_image::CurrentImage;
+use global_hotkey::{GlobalHotKeyEventReceiver, GlobalHotKeyManager};
 use state::CleaveState;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, MouseButton, WindowEvent},
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
+    window::Window,
 };
 
 mod context;
@@ -20,9 +24,10 @@ use context::CleaveContext;
 
 pub struct App {
     args: Option<Verified>,
-    current_image: Option<CurrentImage>,
+    current_image: Arc<Mutex<Option<CurrentImage>>>,
     context: Option<CleaveContext>,
     state: CleaveState,
+    _hk_manager: Option<GlobalHotKeyManager>,
 }
 
 impl App {
@@ -31,7 +36,8 @@ impl App {
             args: args.map(Args::verify).transpose()?,
             context: None,
             state: Default::default(),
-            current_image: None,
+            current_image: Default::default(),
+            _hk_manager: None,
         })
     }
 
@@ -72,6 +78,12 @@ impl App {
             return Ok(());
         }
 
+        if let Some(hotkey) = self.args.as_ref().and_then(|a| a.daemon_hotkey) {
+            let manager = GlobalHotKeyManager::new()?;
+            manager.register(hotkey)?;
+            self._hk_manager = Some(manager);
+        }
+
         self.start_loop()
     }
 
@@ -94,13 +106,11 @@ impl App {
         };
         match (pressed, key) {
             (ElementState::Pressed, NamedKey::Escape) => {
-                if !stay_running {
-                    event_loop.exit();
-                    context.destroy();
-                }
+                event_loop.exit();
+                context.destroy();
             }
             (ElementState::Pressed, NamedKey::Space) => {
-                let Some(c_img) = self.current_image.take() else {
+                let Some(c_img) = self.current_image.lock().unwrap().take() else {
                     eprintln!("No image to crop");
                     return false;
                 };
@@ -172,7 +182,7 @@ impl App {
         }
     }
 
-    fn capture_image(&mut self) {
+    fn capture_image(&self) {
         let Some(context) = &self.context else {
             return;
         };
@@ -180,28 +190,33 @@ impl App {
             self.args.as_ref().and_then(|a| a.monitor),
             &context.graphics.device,
             &context.graphics.queue,
+            context.graphics.config.format,
         )
         .expect("Could not capture image");
         let (w, h) = current_image.image.dimensions();
         let (w, h) = (w as f32, h as f32);
         current_image.update_uniforms(context.total_time, &self.state.selection, (w, h));
         current_image.bundle.update_buffer(&context.graphics.queue);
-        self.current_image = Some(current_image);
+        context.set_window_visibility(true);
+        *self.current_image.lock().unwrap() = Some(current_image);
     }
 }
+
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.context.is_some() {
             return;
         }
-        let context = CleaveContext::new(event_loop).expect("Could not start context");
+        let size = crate::util::get_monitor(self.args.as_ref().and_then(|a| a.monitor))
+            .expect("Could not find monitor!");
+        let context = CleaveContext::new(event_loop, size.width(), size.height())
+            .expect("Could not start context");
         if self
             .args
             .as_ref()
             .is_some_and(|a| a.daemon_hotkey.is_some())
         {
-            self.state.start_listening();
             context.set_window_visibility(false);
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
         } else {
@@ -218,17 +233,26 @@ impl ApplicationHandler for App {
         id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        self.handle_input(&event, event_loop);
         // Check if we are in daemon mode
-        if !self
-            .state
-            .get_listening(self.args.as_ref().and_then(|a| a.daemon_hotkey))
-        {
-            event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-            return;
+        if self.args.as_ref().and_then(|a| a.daemon_hotkey).is_some() {
+            if self.current_image.lock().unwrap().is_none() {
+                if let Ok(ev) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv()
+                // .is_ok()
+                {
+                    println!("{:?}", ev);
+                    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+                    return;
+                    // self.capture_image();
+                } else {
+                    return;
+                }
+            }
         }
+        self.handle_input(&event, event_loop);
         if let Some(context) = &self.context {
-            if !context.graphics.is_visible().unwrap_or(true) && self.current_image.is_none() {
+            if !context.graphics.is_visible().unwrap_or(true)
+                && self.current_image.lock().unwrap().is_none()
+            {
                 self.capture_image();
             }
         }
@@ -243,7 +267,8 @@ impl ApplicationHandler for App {
                 }
 
                 context.update();
-                let bund = self.current_image.as_mut().map(|c_img| {
+                let mut c_img = self.current_image.lock().unwrap();
+                let bund = c_img.as_mut().map(|c_img| {
                     c_img.update_uniforms(
                         context.total_time,
                         &self.state.selection,
@@ -251,8 +276,8 @@ impl ApplicationHandler for App {
                     );
                     c_img.bundle.update_buffer(&context.graphics.queue);
                     &c_img.bundle
-                  });
-                  context.draw(bund);
+                });
+                context.draw(bund);
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();

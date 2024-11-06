@@ -16,6 +16,7 @@ impl CurrentImage {
         monitor: Option<u32>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
     ) -> anyhow::Result<Self> {
         let img = crate::util::capture_screen(monitor)?;
         let bundle = GraphicsBundle::new(
@@ -23,13 +24,15 @@ impl CurrentImage {
             device,
             queue,
             wgpu::PrimitiveTopology::TriangleStrip,
-            wgpu::TextureFormat::Bgra8UnormSrgb,
+            format,
         );
         Ok(Self { image: img, bundle })
     }
 
     pub fn update_uniforms(&mut self, time: f32, user: &UserSelection, (w, h): (f32, f32)) {
         self.bundle.uniforms.time = time;
+
+        // println!("{}", self.bundle.uniforms);
         self.bundle.uniforms.screen_size.x = w;
         self.bundle.uniforms.screen_size.y = h;
 

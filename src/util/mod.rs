@@ -7,15 +7,15 @@ use wgpu::core::command::Rect;
 
 use crate::args::Verified;
 
-pub(crate) fn crop_and_save(
-    img: &RgbaImage,
-    args: Option<&Verified>,
-    rect: Rect<f32>,
-    output: impl AsRef<Path>,
-) -> anyhow::Result<()> {
-    let img = crop_image(img, args, rect)?;
-    save_selection(img, args, output)
-}
+// pub(crate) fn crop_and_save(
+//     img: &RgbaImage,
+//     args: Option<&Verified>,
+//     rect: Rect<f32>,
+//     output: impl AsRef<Path>,
+// ) -> anyhow::Result<()> {
+//     let img = crop_image(img, args, rect)?;
+//     save_selection(img, args, output)
+// }
 
 pub(crate) fn crop_image(
     img: &RgbaImage,
@@ -93,7 +93,10 @@ pub(crate) fn save_to_clipboard(image_data: &RgbaImage) -> Result<(), arboard::E
         height: image_data.height() as usize,
         bytes: std::borrow::Cow::Borrowed(image_data.as_raw()),
     };
-    clipboard.set_image(image_data)
+    if let Err(e) = clipboard.set_image(image_data) {
+        eprintln!("Error setting image to clipboard: {:?}", e);
+    };
+    Ok(())
 }
 
 pub(crate) fn load_icon() -> Result<(u32, u32, Vec<u8>), anyhow::Error> {
@@ -105,12 +108,15 @@ pub(crate) fn load_icon() -> Result<(u32, u32, Vec<u8>), anyhow::Error> {
 }
 
 pub(crate) fn capture_screen(monitor_id: Option<u32>) -> anyhow::Result<RgbaImage> {
-    let monitors = xcap::Monitor::all()?;
-    let img = monitors
+    get_monitor(monitor_id).and_then(|e| Ok(e.capture_image()?))
+}
+
+pub(crate) fn get_monitor(monitor_id: Option<u32>) -> anyhow::Result<xcap::Monitor> {
+    let mut monitors = xcap::Monitor::all()?;
+    let monitor = monitors
         .iter()
-        .find(|m| monitor_id.map_or(m.is_primary(), |id| m.id() == id))
-        .or_else(|| monitors.iter().find(|m| m.is_primary()))
-        .with_context(|| "Could not select monitor")?
-        .capture_image()?;
-    Ok(img)
+        .position(|m| monitor_id.map_or(m.is_primary(), |id| m.id() == id))
+        .or_else(|| monitors.iter().position(|m| m.is_primary()))
+        .with_context(|| "Could not select monitor")?;
+    Ok(monitors.swap_remove(monitor))
 }

@@ -7,12 +7,9 @@ use winit::{
     keyboard::{KeyCode, ModifiersState, PhysicalKey},
 };
 
-use crate::{
-    keyboard::hotkey::HotKey,
-    selection::{
-        modes::{Direction, SelectionMode},
-        UserSelection,
-    },
+use crate::selection::{
+    modes::{Direction, SelectionMode},
+    UserSelection,
 };
 
 #[derive(Debug, Default)]
@@ -22,38 +19,14 @@ pub struct CleaveState {
     mode: SelectionMode,
     size: Option<(f32, f32)>,
     mods: ModifiersState,
-    listening: bool,
-    pressed: HashSet<KeyCode>,
 }
 
 impl CleaveState {
-    pub fn start_listening(&mut self) {
-        self.listening = true;
-    }
-
-    pub(crate) fn get_listening(&mut self, hotkey: Option<HotKey>) -> bool {
-        if !self.listening {
-            return false;
-        }
-        let Some(hotkey) = hotkey else {
-            return false;
-        };
-        if self.pressed.iter().any(|k| hotkey.matches(self.mods, k)) {
-            self.stop_listening();
-            return true;
-        }
-        false
-    }
-
-    pub fn stop_listening(&mut self) {
-        self.listening = false;
-    }
-
     pub fn handle_event(&mut self, event: &WindowEvent) {
         match event {
-            WindowEvent::KeyboardInput { event, .. } => {
-                self.handle_key(event);
-            }
+            // WindowEvent::KeyboardInput { event, .. } => {
+            // self.handle_key(event);
+            // }
             WindowEvent::ModifiersChanged(mods) => self.mods = mods.state(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_position = DVec2::new(position.x, position.y);
@@ -61,7 +34,6 @@ impl CleaveState {
                     drag.w = position.x as f32 - drag.x;
                     drag.h = position.y as f32 - drag.y;
                 }
-                println!("Mouse position: {:?}", self.mouse_position);
             }
             WindowEvent::MouseInput { state, button, .. } => match (state, button) {
                 (ElementState::Pressed, MouseButton::Left) => self.start_drag(),
@@ -74,15 +46,15 @@ impl CleaveState {
         // println!("Pressed: {:?}, mods: {:?}", self.pressed, self.mods);
     }
 
-    pub fn handle_key(&mut self, event: &KeyEvent) {
-        if let PhysicalKey::Code(code) = event.physical_key {
-            if event.state.is_pressed() {
-                self.pressed.insert(code);
-            } else {
-                self.pressed.remove(&code);
-            }
-        }
-    }
+    // pub fn handle_key(&mut self, event: &KeyEvent) {
+    //     if let PhysicalKey::Code(code) = event.physical_key {
+    //         if event.state.is_pressed() {
+    //             self.pressed.insert(code);
+    //         } else {
+    //             self.pressed.remove(&code);
+    //         }
+    //     }
+    // }
 
     pub fn start_drag(&mut self) {
         if let Some(drag) = self.selection.drag.as_mut() {

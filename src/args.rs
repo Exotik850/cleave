@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use image::ImageFormat;
 use wgpu::core::command::Rect;
 
-use crate::keyboard::hotkey::HotKey;
+use global_hotkey::hotkey::HotKey;
 use crate::selection::modes::SelectionMode;
 
 fn parse_region(s: &str) -> Result<Rect<f32>, String> {

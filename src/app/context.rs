@@ -1,4 +1,3 @@
-
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use image::GenericImageView;
@@ -37,8 +36,12 @@ pub struct CleaveContext {
 }
 
 impl CleaveContext {
-    pub fn new(event_loop: &winit::event_loop::ActiveEventLoop) -> anyhow::Result<Self> {
-        let (width, height, rgba) = crate::util::load_icon()?;
+    pub fn new(
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<Self> {
+        let (ico_width, ico_height, rgba) = crate::util::load_icon()?;
         let window = event_loop.create_window(
             WindowAttributes::default()
                 .with_inner_size(PhysicalSize::new(width, height))
@@ -47,28 +50,20 @@ impl CleaveContext {
                 .with_decorations(false)
                 .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
                 .with_visible(false)
-                .with_window_icon(Some(Icon::from_rgba(rgba, width, height)?)),
+                .with_window_icon(Some(Icon::from_rgba(rgba, ico_width, ico_height)?)),
         )?;
 
         let graphics = Graphics::new(window, width, height);
         let graphics = pollster::block_on(graphics)?;
 
-        // let bundle = GraphicsBundle::new(
-        //     img.clone().into(),
-        //     &graphics.device,
-        //     &graphics.queue,
-        //     wgpu::PrimitiveTopology::TriangleStrip,
-        //     graphics.config.format,
-        // );
-
-        graphics.window.set_visible(true);
-
-        let _ = graphics
+        graphics
             .window
-            .set_cursor_grab(winit::window::CursorGrabMode::Confined);
-
-        // let surface_texture = SurfaceTexture::new(size.width, size.height, window.clone());
-        // let pixels = Pixels::new(size.width, size.height, surface_texture)?;
+            .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+            .or_else(|_| {
+                graphics
+                    .window
+                    .set_cursor_grab(winit::window::CursorGrabMode::Locked)
+            })?;
 
         Ok(Self {
             total_time: 0.0,
@@ -77,7 +72,10 @@ impl CleaveContext {
         })
     }
 
-    pub fn draw<U: Pod + Zeroable + Copy + Clone + Default>(&mut self, bundle: Option<&GraphicsBundle<U>>) {
+    pub fn draw<U: Pod + Zeroable + Copy + Clone + Default>(
+        &mut self,
+        bundle: Option<&GraphicsBundle<U>>,
+    ) {
         let mut pass = match self.graphics.render() {
             Ok(pass) => pass,
             Err(err) => {
