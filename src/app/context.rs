@@ -77,7 +77,7 @@ impl CleaveContext {
         })
     }
 
-    pub fn draw<U: Pod + Zeroable + Copy + Clone + Default>(&mut self, bundle: &GraphicsBundle<U>) {
+    pub fn draw<U: Pod + Zeroable + Copy + Clone + Default>(&mut self, bundle: Option<&GraphicsBundle<U>>) {
         let mut pass = match self.graphics.render() {
             Ok(pass) => pass,
             Err(err) => {
@@ -85,7 +85,9 @@ impl CleaveContext {
                 return;
             }
         };
-        bundle.draw(&mut pass);
+        if let Some(bundle) = bundle {
+            bundle.draw(&mut pass);
+        }
         pass.finish();
         self.graphics.request_redraw();
     }

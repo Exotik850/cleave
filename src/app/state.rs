@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use glam::DVec2;
 use wgpu::core::command::Rect;
 use winit::{
-    event::{KeyEvent, WindowEvent},
+    event::{ElementState, KeyEvent, MouseButton, WindowEvent},
     keyboard::{KeyCode, ModifiersState, PhysicalKey},
 };
 
@@ -33,10 +33,10 @@ impl CleaveState {
 
     pub(crate) fn get_listening(&mut self, hotkey: Option<HotKey>) -> bool {
         if !self.listening {
-            return true;
+            return false;
         }
         let Some(hotkey) = hotkey else {
-            return true; // Should never happen
+            return false;
         };
         if self.pressed.iter().any(|k| hotkey.matches(self.mods, k)) {
             self.stop_listening();
@@ -61,10 +61,17 @@ impl CleaveState {
                     drag.w = position.x as f32 - drag.x;
                     drag.h = position.y as f32 - drag.y;
                 }
+                println!("Mouse position: {:?}", self.mouse_position);
             }
+            WindowEvent::MouseInput { state, button, .. } => match (state, button) {
+                (ElementState::Pressed, MouseButton::Left) => self.start_drag(),
+                (ElementState::Released, MouseButton::Left) => self.end_drag(),
+                (_, MouseButton::Right) => self.cancel_drag(),
+                _ => {}
+            },
             _ => {}
         }
-        println!("Pressed: {:?}, mods: {:?}", self.pressed, self.mods);
+        // println!("Pressed: {:?}, mods: {:?}", self.pressed, self.mods);
     }
 
     pub fn handle_key(&mut self, event: &KeyEvent) {
