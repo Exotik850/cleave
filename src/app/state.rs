@@ -24,9 +24,9 @@ pub struct CleaveState {
 impl CleaveState {
     pub fn handle_event(&mut self, event: &WindowEvent) {
         match event {
-            // WindowEvent::KeyboardInput { event, .. } => {
-            // self.handle_key(event);
-            // }
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.handle_key(event);
+            }
             WindowEvent::ModifiersChanged(mods) => self.mods = mods.state(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_position = DVec2::new(position.x, position.y);
@@ -46,15 +46,35 @@ impl CleaveState {
         // println!("Pressed: {:?}, mods: {:?}", self.pressed, self.mods);
     }
 
-    // pub fn handle_key(&mut self, event: &KeyEvent) {
-    //     if let PhysicalKey::Code(code) = event.physical_key {
-    //         if event.state.is_pressed() {
-    //             self.pressed.insert(code);
-    //         } else {
-    //             self.pressed.remove(&code);
-    //         }
-    //     }
-    // }
+    pub fn handle_key(&mut self, event: &KeyEvent) {
+        let PhysicalKey::Code(code) = event.physical_key else {
+            return;
+        };
+        match (event.state, code) {
+            (ElementState::Pressed, KeyCode::ArrowUp) => {
+                self.handle_move(Direction::Up);
+            }
+            (ElementState::Pressed, KeyCode::ArrowDown) => {
+                self.handle_move(Direction::Down);
+            }
+            (ElementState::Pressed, KeyCode::ArrowLeft) => {
+                self.handle_move(Direction::Left);
+            }
+            (ElementState::Pressed, KeyCode::ArrowRight) => {
+                self.handle_move(Direction::Right);
+            }
+            (ElementState::Pressed, KeyCode::ShiftLeft) => {
+                self.set_mode(SelectionMode::InverseResize);
+            }
+            (ElementState::Released, KeyCode::ShiftLeft | KeyCode::ControlLeft) => {
+                self.set_mode(SelectionMode::Move);
+            }
+            (ElementState::Pressed, KeyCode::ControlLeft) => {
+                self.set_mode(SelectionMode::Resize);
+            }
+            _ => {}
+        };
+    }
 
     pub fn start_drag(&mut self) {
         if let Some(drag) = self.selection.drag.as_mut() {
@@ -82,16 +102,14 @@ impl CleaveState {
 
     pub fn handle_move(&mut self, dir: Direction) -> Option<()> {
         let (width, height) = self.size?;
-
+        let selection = self.selection.selection.as_mut()?;
+        
         let (dx, dy) = match dir {
             Direction::Up => (0.0, -1.0),
             Direction::Down => (0.0, 1.0),
             Direction::Left => (-1.0, 0.0),
             Direction::Right => (1.0, 0.0),
         };
-
-        let selection = self.selection.selection.as_mut()?;
-
         let (x_delta, y_delta) = match self.mode {
             SelectionMode::Move => (dx, dy),
             SelectionMode::InverseResize => (dx, dy),

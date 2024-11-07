@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Exotik850"]
 
 [workspace]
-members = ["cleave-graphics"]
+members = [ "cleave-daemon","cleave-graphics"]
 
 
 [dependencies]
@@ -19,12 +19,13 @@ pollster = { workspace = true }
 wgpu = { workspace = true }
 xcap = { workspace = true }
 thiserror = { workspace = true }
+clap = { workspace = true }
 cleave-graphics = { path = "cleave-graphics" }
-clap = { version = "4.5.20", features = ["derive"] }
 chrono = "0.4.38"
 global-hotkey = "0.6.3"
 
 [workspace.dependencies]
+clap = { version = "4.5.20", features = ["derive"] }
 anyhow = "1"
 arboard = "3.4.1"
 thiserror = "1"

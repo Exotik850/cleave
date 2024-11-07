@@ -1,0 +1,10 @@
+[package]
+name = "cleave-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }
+thiserror = { workspace = true }
+device_query = { version = "2.1.0", path = "../../device_query" }
+bitflags = "2.6.0"
