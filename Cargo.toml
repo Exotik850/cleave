@@ -2,10 +2,10 @@
 name = "cleave"
 version = "0.1.0"
 edition = "2021"
+authors = ["Exotik850"]
 
 [workspace]
-members = ["cleave-graphics"]
-
+members = [ "cleave-daemon","cleave-graphics"]
 
 [dependencies]
 bytemuck = { workspace = true }
@@ -17,18 +17,24 @@ image = { workspace = true }
 pollster = { workspace = true }
 wgpu = { workspace = true }
 xcap = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
 cleave-graphics = { path = "cleave-graphics" }
-
+cleave-daemon = { path = "cleave-daemon" }
+chrono = "0.4.38"
 
 [workspace.dependencies]
+clap = { version = "4.5.20", features = ["derive"] }
 anyhow = "1"
 arboard = "3.4.1"
+thiserror = "2"
 bytemuck = { version = "1.19.0", features = ["derive"] }
-glam = { version = "0.29.1", features = ["bytemuck"] }
-image = "0.25.4"
+glam = { version = "0.29", features = ["bytemuck"] }
+image = "0.25"
 pollster = "0.4.0"
 wgpu = "23.0.0"
 winit = { version = "0.30.5", features = ["rwh_06"] }
+winit_input_helper = { git = "https://github.com/zachdedoo13/winit_input_helper_updated.git" }
 xcap = "0.0.14"
 
 [profile.release]
@@ -37,3 +43,13 @@ lto = "thin"
 
 [build]
 rustflags = ["-C", "target-cpu=native"]
+
+[features]
+
+[[bin]]
+name = "cleave-daemon"
+path = "cleave-daemon/src/main.rs"
+
+[[bin]]
+name = "cleave"
+path = "src/main.rs"

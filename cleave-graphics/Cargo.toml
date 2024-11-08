@@ -9,4 +9,4 @@ image = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 winit = { workspace = true }
-thiserror = "1"
+thiserror = { workspace = true }

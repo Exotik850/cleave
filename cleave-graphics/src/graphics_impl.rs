@@ -163,6 +163,7 @@ impl<W> GraphicsPass<'_, '_, W> {
     pub fn finish(mut self) {
         drop(self.pass);
         let Some(encoder) = self.encoder.take() else {
+            eprintln!("No encoder available");
             return;
         };
         self.graphics.queue.submit(Some(encoder.finish()));
@@ -179,13 +180,12 @@ fn find_config(surface: &Surface, adapter: &wgpu::Adapter, size: UVec2) -> Surfa
         .iter()
         .find(|f| f.is_srgb())
         .unwrap_or(&surface_config.formats[0]);
-
     SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: *format,
         width: size.x,
         height: size.y,
-        present_mode: wgpu::PresentMode::Immediate,
+        present_mode: wgpu::PresentMode::AutoVsync,
         desired_maximum_frame_latency: 2,
         alpha_mode: surface_config.alpha_modes[0],
         view_formats: vec![],
