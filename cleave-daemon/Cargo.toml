@@ -6,5 +6,8 @@ edition = "2021"
 [dependencies]
 clap = { workspace = true }
 thiserror = { workspace = true }
-device_query = { version = "2.1.0", path = "../../device_query" }
+anyhow = { workspace = true }
+device_query = { git = "https://github.com/exotik850/device_query", branch = "refactor" }
 bitflags = "2.6.0"
+fd-lock = "4.0.2"
+dirs = "5.0.1"

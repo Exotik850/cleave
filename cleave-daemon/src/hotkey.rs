@@ -1,8 +1,7 @@
 use std::{borrow::Borrow, fmt::Display, str::FromStr};
 
-use device_query::Keycode;
-
-use crate::modifiers::Modifiers;
+pub use crate::modifiers::Modifiers;
+pub use device_query::Keycode;
 
 #[derive(thiserror::Error, Debug)]
 pub enum HotKeyParseError {
@@ -34,19 +33,12 @@ impl HotKey {
     }
 
     /// Returns `true` if this [`Code`] and [`Modifiers`] matches this hotkey.
-    pub fn matches(
-        &self,
-        modifiers: impl Borrow<Modifiers>,
-        key: impl Borrow<Keycode>,
-    ) -> bool {
+    pub fn matches(&self, modifiers: impl Borrow<Modifiers>, key: impl Borrow<Keycode>) -> bool {
         // Should be a const but const bit_or doesn't work here.
-        let base_mods = Modifiers::SHIFT
-            | Modifiers::CONTROL
-            | Modifiers::ALT
-            | Modifiers::SUPER;
+        let base_mods = Modifiers::SHIFT | Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
         let modifiers = modifiers.borrow();
         let key = key.borrow();
-        (self.mods == (*modifiers & base_mods).into()) && (self.key == *key)
+        (self.mods == (*modifiers & base_mods)) && (self.key == *key)
     }
 
     /// Converts this hotkey into a string.
@@ -154,7 +146,7 @@ fn parse_hotkey(hotkey: &str) -> Result<HotKey, HotKeyParseError> {
                         mods |= Modifiers::CONTROL;
                     }
                     "META" => {
-                      mods |= Modifiers::META;
+                        mods |= Modifiers::META;
                     }
                     _ => {
                         key = Some(parse_key(token)?);
@@ -165,7 +157,7 @@ fn parse_hotkey(hotkey: &str) -> Result<HotKey, HotKeyParseError> {
     }
 
     Ok(HotKey::new(
-        Some(mods.into()),
+        Some(mods),
         key.ok_or_else(|| HotKeyParseError::InvalidFormat(hotkey.to_string()))?,
     ))
 }
@@ -290,7 +282,6 @@ fn parse_key(key: &str) -> Result<Keycode, HotKeyParseError> {
         // "F22" => Ok(F22),
         // "F23" => Ok(F23),
         // "F24" => Ok(F24),
-
         _ => Err(HotKeyParseError::UnsupportedKey(key.to_string())),
     }
 }

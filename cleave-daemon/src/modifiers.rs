@@ -13,7 +13,6 @@ bitflags::bitflags! {
   /// Specification:
   /// <https://w3c.github.io/uievents-key/#keys-modifier>
   #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-  #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
   pub struct Modifiers: u32 {
       const ALT = 0x01;
       const ALT_GRAPH = 0x2;
@@ -33,33 +32,33 @@ bitflags::bitflags! {
 }
 
 impl Modifiers {
-  /// Return `true` if a shift key is pressed.
-  pub fn shift(&self) -> bool {
-      self.contains(Modifiers::SHIFT)
-  }
+    /// Return `true` if a shift key is pressed.
+    pub fn shift(&self) -> bool {
+        self.contains(Modifiers::SHIFT)
+    }
 
-  /// Return `true` if a control key is pressed.
-  pub fn ctrl(&self) -> bool {
-      self.contains(Modifiers::CONTROL)
-  }
+    /// Return `true` if a control key is pressed.
+    pub fn ctrl(&self) -> bool {
+        self.contains(Modifiers::CONTROL)
+    }
 
-  /// Return `true` if an alt key is pressed.
-  pub fn alt(&self) -> bool {
-      self.contains(Modifiers::ALT)
-  }
+    /// Return `true` if an alt key is pressed.
+    pub fn alt(&self) -> bool {
+        self.contains(Modifiers::ALT)
+    }
 
-  /// Return `true` if a meta key is pressed.
-  pub fn meta(&self) -> bool {
-      self.contains(Modifiers::META)
-  }
+    /// Return `true` if a meta key is pressed.
+    pub fn meta(&self) -> bool {
+        self.contains(Modifiers::META)
+    }
 
-  pub fn from_keycode(key: Keycode) -> Option<Modifiers> {
-      match key {
-          Keycode::LShift | Keycode::RShift => Some(Modifiers::SHIFT),
-          Keycode::LControl | Keycode::RControl => Some(Modifiers::CONTROL),
-          Keycode::LAlt | Keycode::RAlt => Some(Modifiers::ALT),
-          Keycode::LMeta | Keycode::RMeta => Some(Modifiers::META),
-          _ => None,
-      }
-  }
+    pub fn from_keycode(key: Keycode) -> Option<Modifiers> {
+        match key {
+            Keycode::LShift | Keycode::RShift => Some(Modifiers::SHIFT),
+            Keycode::LControl | Keycode::RControl => Some(Modifiers::CONTROL),
+            Keycode::LAlt | Keycode::RAlt => Some(Modifiers::ALT),
+            Keycode::LMeta | Keycode::RMeta => Some(Modifiers::META),
+            _ => None,
+        }
+    }
 }
