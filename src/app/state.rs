@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 
 use glam::DVec2;
 use wgpu::core::command::Rect;
@@ -103,7 +102,7 @@ impl CleaveState {
     pub fn handle_move(&mut self, dir: Direction) -> Option<()> {
         let (width, height) = self.size?;
         let selection = self.selection.selection.as_mut()?;
-        
+
         let (dx, dy) = match dir {
             Direction::Up => (0.0, -1.0),
             Direction::Down => (0.0, 1.0),

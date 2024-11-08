@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
+use cleave_daemon::HotKey;
 use image::ImageFormat;
 use wgpu::core::command::Rect;
 
-use global_hotkey::hotkey::HotKey;
 use crate::selection::modes::SelectionMode;
 
 fn parse_region(s: &str) -> Result<Rect<f32>, String> {
@@ -82,7 +82,7 @@ pub struct Args {
     ///
     /// If not provided, the entire screen is captured and the user is prompted to select a region
     /// If provided, the user is not prompted and the region is captured immediately
-    #[arg(long, short='r', value_parser=parse_region)]
+    #[arg(long, short='i', value_parser=parse_region)]
     pub region: Option<Rect<f32>>,
     /// Filename for the captured image
     ///
@@ -108,7 +108,7 @@ pub struct Args {
     // #[arg(long, short='p')]
     // optimize: bool,
     /// Scale the captured image by a factor
-    #[arg(long, short = 's')]
+    #[arg(long, short = 'r')]
     pub scale: Option<f32>,
     /// Filter to use when scaling the image
     ///
@@ -132,6 +132,14 @@ pub struct Args {
     /// Only used when daemon_hotkey is provided
     #[arg(long, short)]
     pub persistent: bool,
+
+    /// Key Listen Sleep Duration
+    ///
+    /// If provided, the app will sleep for the specified duration in milliseconds before listening for the hotkey
+    ///
+    /// Only used when daemon_hotkey is provided
+    #[arg(long, short, default_value = "100")]
+    pub sleep: u64,
 }
 
 impl Args {
@@ -173,7 +181,30 @@ impl Args {
             }
         }
 
-        let daemon_hotkey = self.daemon_hotkey.map(|s| s.parse()).transpose()?;
+        if let Some(hotkey) = self
+            .daemon_hotkey
+            .map(|s| s.parse::<HotKey>())
+            .transpose()?
+        {
+            let mut daemon = std::process::Command::new("cleave-daemon");
+            daemon.args(["--hotkey", &hotkey.to_string()]);
+            daemon.args(["--sleep", &self.sleep.to_string()]);
+            if self.persistent {
+                daemon.arg("--persistent");
+            }
+            if let Err(e) = daemon.spawn() {
+                match e.kind() {
+                    std::io::ErrorKind::NotFound => {
+                        anyhow::bail!("Could not find cleave-daemon in PATH");
+                    }
+                    _ => {
+                        anyhow::bail!("Could not start cleave-daemon: {}", e);
+                    }
+                }
+            };
+            println!("Daemon started, press {} to capture the screen", hotkey);
+            std::process::exit(0);
+        }
 
         Ok(Verified {
             output_dir: self.output_dir,
@@ -187,8 +218,6 @@ impl Args {
             config_path: None,
             scale: self.scale,
             filter: self.filter,
-            daemon_hotkey,
-            persistent: self.persistent,
         })
     }
 }
@@ -205,12 +234,4 @@ pub struct Verified {
     pub config_path: Option<PathBuf>,
     pub scale: Option<f32>,
     pub filter: Option<image::imageops::FilterType>,
-    pub daemon_hotkey: Option<HotKey>,
-    pub persistent: bool,
-}
-
-impl Verified {
-    pub fn stay_running(&self) -> bool {
-        self.daemon_hotkey.is_some() && self.persistent
-    }
 }

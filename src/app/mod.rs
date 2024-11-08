@@ -1,4 +1,3 @@
-use std::sync::{Arc, Mutex};
 
 use crate::{
     args::{Args, Verified},
@@ -6,14 +5,12 @@ use crate::{
 };
 
 use current_image::CurrentImage;
-use global_hotkey::{GlobalHotKeyEventReceiver, GlobalHotKeyManager};
 use state::CleaveState;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, KeyEvent, MouseButton, WindowEvent},
+    event::{ElementState, KeyEvent, WindowEvent},
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
-    window::Window,
 };
 
 mod context;
@@ -24,10 +21,9 @@ use context::CleaveContext;
 
 pub struct App {
     args: Option<Verified>,
-    current_image: Arc<Mutex<Option<CurrentImage>>>,
     context: Option<CleaveContext>,
     state: CleaveState,
-    _hk_manager: Option<GlobalHotKeyManager>,
+    current_image: Option<CurrentImage>,
 }
 
 impl App {
@@ -36,8 +32,7 @@ impl App {
             args: args.map(Args::verify).transpose()?,
             context: None,
             state: Default::default(),
-            current_image: Default::default(),
-            _hk_manager: None,
+            current_image: None,
         })
     }
 
@@ -78,12 +73,6 @@ impl App {
             return Ok(());
         }
 
-        if let Some(hotkey) = self.args.as_ref().and_then(|a| a.daemon_hotkey) {
-            let manager = GlobalHotKeyManager::new()?;
-            manager.register(hotkey)?;
-            self._hk_manager = Some(manager);
-        }
-
         self.start_loop()
     }
 
@@ -95,7 +84,6 @@ impl App {
         let Some(context) = &mut self.context else {
             return false;
         };
-        let stay_running = self.args.as_ref().is_some_and(|d| d.stay_running());
         let KeyEvent {
             logical_key: Key::Named(key),
             state: pressed,
@@ -110,7 +98,7 @@ impl App {
                 context.destroy();
             }
             (ElementState::Pressed, NamedKey::Space) => {
-                let Some(c_img) = self.current_image.lock().unwrap().take() else {
+                let Some(c_img) = self.current_image.take() else {
                     eprintln!("No image to crop");
                     return false;
                 };
@@ -138,9 +126,7 @@ impl App {
                         };
                     }
                 }
-                if !stay_running {
-                    event_loop.exit();
-                }
+                event_loop.exit();
             }
             (ElementState::Pressed, NamedKey::ArrowDown) => {
                 self.state.handle_move(Direction::Down);
@@ -173,16 +159,13 @@ impl App {
         event: &WindowEvent,
         event_loop: &winit::event_loop::ActiveEventLoop,
     ) {
-        self.state.handle_event(&event);
-        match event {
-            WindowEvent::KeyboardInput { event, .. } => {
-                self.execute_key_command(event.clone(), event_loop);
-            }
-            _ => {}
+        self.state.handle_event(event);
+        if let WindowEvent::KeyboardInput { event, .. } = event {
+            self.execute_key_command(event.clone(), event_loop);
         }
     }
 
-    fn capture_image(&self) {
+    fn capture_image(&mut self) {
         let Some(context) = &self.context else {
             return;
         };
@@ -198,10 +181,9 @@ impl App {
         current_image.update_uniforms(context.total_time, &self.state.selection, (w, h));
         current_image.bundle.update_buffer(&context.graphics.queue);
         context.set_window_visibility(true);
-        *self.current_image.lock().unwrap() = Some(current_image);
+        self.current_image = Some(current_image);
     }
 }
-
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
@@ -212,19 +194,8 @@ impl ApplicationHandler for App {
             .expect("Could not find monitor!");
         let context = CleaveContext::new(event_loop, size.width(), size.height())
             .expect("Could not start context");
-        if self
-            .args
-            .as_ref()
-            .is_some_and(|a| a.daemon_hotkey.is_some())
-        {
-            context.set_window_visibility(false);
-            event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-        } else {
-            self.context = Some(context);
-            self.capture_image();
-            return;
-        }
         self.context = Some(context);
+        self.capture_image();
     }
 
     fn window_event(
@@ -233,26 +204,9 @@ impl ApplicationHandler for App {
         id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        // Check if we are in daemon mode
-        if self.args.as_ref().and_then(|a| a.daemon_hotkey).is_some() {
-            if self.current_image.lock().unwrap().is_none() {
-                if let Ok(ev) = global_hotkey::GlobalHotKeyEvent::receiver().try_recv()
-                // .is_ok()
-                {
-                    println!("{:?}", ev);
-                    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-                    return;
-                    // self.capture_image();
-                } else {
-                    return;
-                }
-            }
-        }
         self.handle_input(&event, event_loop);
         if let Some(context) = &self.context {
-            if !context.graphics.is_visible().unwrap_or(true)
-                && self.current_image.lock().unwrap().is_none()
-            {
+            if !context.graphics.is_visible().unwrap_or(true) && self.current_image.is_none() {
                 self.capture_image();
             }
         }
@@ -265,10 +219,8 @@ impl ApplicationHandler for App {
                 if id != context.window_id() {
                     return;
                 }
-
                 context.update();
-                let mut c_img = self.current_image.lock().unwrap();
-                let bund = c_img.as_mut().map(|c_img| {
+                let bund = self.current_image.as_mut().map(|c_img| {
                     c_img.update_uniforms(
                         context.total_time,
                         &self.state.selection,
